@@ -1,4 +1,4 @@
-import * as T from 'three';
+import * as T from './three.module.js';
 import { EffectComposer } from './EffectComposer.js';
 import { RenderPass } from './RenderPass.js';
 import { GTAOPass } from './GTAOPass.js';

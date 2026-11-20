@@ -1,4 +1,4 @@
-import * as T from 'three';
+import * as T from './three.module.js';
 import { bendPoint, frameAt, clamp, STREET_MIN, STREET_MAX } from './curve.js';
 
 // First person walker, in street coordinates: x across, s along, yaw and pitch relative to the street.

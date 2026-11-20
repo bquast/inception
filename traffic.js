@@ -1,4 +1,4 @@
-import * as T from 'three';
+import * as T from './three.module.js';
 import { mergeGeometries } from './BufferGeometryUtils.js';
 import { bendPoint, frameAt, STREET_MIN, STREET_MAX } from './curve.js';
 

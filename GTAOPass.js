@@ -19,7 +19,7 @@ import {
 	UnsignedInt248Type,
 	WebGLRenderTarget,
 	ZeroFactor
-} from 'three';
+} from './three.module.js';
 import { Pass, FullScreenQuad } from './Pass.js';
 import { generateMagicSquareNoise, GTAOShader, GTAODepthShader, GTAOBlendShader } from './GTAOShader.js';
 import { generatePdSamplePointInitializer, PoissonDenoiseShader } from './PoissonDenoiseShader.js';

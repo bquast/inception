@@ -316,11 +316,14 @@ footer button {
 }
 #error {
   position: fixed;
-  inset: 35%;
+  inset: 10% 15%;
   background: #1b2224;
   padding: 30px;
   z-index: 9;
   line-height: 1.7;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 14px;
 }
 @media (max-height: 800px) and (min-width: 701px) {
   .panel {

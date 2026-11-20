@@ -1,4 +1,4 @@
-import * as T from 'three';
+import * as T from './three.module.js';
 
 const SKY_VERT = `
 varying vec3 vDirection;

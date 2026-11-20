@@ -1,9 +1,67 @@
-import * as T from 'three';
+import * as T from './three.module.js';
 import { mergeGeometries } from './BufferGeometryUtils.js';
 import { bendGLSL, MAX_HEIGHT } from './curve.js';
-// The whole street and the clay district around it, built flat (z = s) and merged into one mesh per material.
+// The whole street and the side district around it, built flat (z = s) and merged into one mesh per material.
 // Every material folds in its vertex shader (see bendGLSL in curve.js), so the fold costs nothing on the CPU.
 // Returns the colliders for the walker, and bounds used to check the 15 m height limit.
+// A Haussmann facade painted on a canvas, 6.08 m wide and 9.35 m tall, on the same grid as the
+// geometry: rusticated ground floor, three floors of framed windows, balconies on the first and third.
+// Drawn near-white so a material colour tints it.
+function paintedFacade() {
+  const W = 512;
+  const H = 768;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const g = c.getContext('2d');
+  const px = W / 6.08;
+  const py = H / 9.35;
+  // Rectangle in metres: centre x from the middle, bottom y from the base of the wall.
+  const rect = (fill, cx, y, w, h) => {
+    g.fillStyle = fill;
+    g.fillRect((cx - w / 2 + 3.04) * px, H - (y + h) * py, w * px, h * py);
+  };
+  rect('#f3f1ec', 0, 0, 6.08, 9.35);
+  for (let r = 0; r < 7; r++) rect('#b8b3aa', 0, 0.42 + r * 0.28, 6.08, 0.025);
+  rect('#ffffff', 0, 2.27, 6.08, 0.2);
+  rect('#aaa59c', 0, 2.25, 6.08, 0.03);
+  // Door and two ground-floor openings.
+  rect('#38423f', 0, 0.2, 1.14, 2.08);
+  rect('#6b553b', 0, 0.25, 0.93, 1.85);
+  for (const cx of [-1.85, 1.85]) {
+    rect('#e9e6df', cx, 0.6, 1.3, 1.55);
+    rect('#33454f', cx, 0.7, 1.08, 1.35);
+  }
+  // Windows: frame, glass, glazing bars, pediment.
+  for (let floor = 0; floor < 3; floor++) {
+    const yy = 3.37 + floor * 2.12;
+    for (const cx of [-1.68, 0, 1.68]) {
+      rect('#d4cfc5', cx, yy - 0.9, 1.07, 1.8);
+      rect('#ffffff', cx, yy - 0.86, 1.03, 1.72);
+      rect('#344a56', cx, yy - 0.745, 0.79, 1.49);
+      rect('#4f6672', cx - 0.2, yy + 0.2, 0.3, 0.45);
+      rect('#e8e4da', cx, yy - 0.745, 0.04, 1.49);
+      rect('#e8e4da', cx, yy + 0.3, 0.79, 0.04);
+      rect('#ffffff', cx, yy + 0.89, 1.18, 0.12);
+      rect('#b8b3aa', cx, yy + 0.87, 1.18, 0.02);
+    }
+  }
+  // Balconies: slab, its shadow, rails and bars.
+  for (const floor of [0, 2]) {
+    const yy = 3.37 + floor * 2.12;
+    rect('#ffffff', 0, yy - 0.94, 6.08, 0.13);
+    rect('#9f9a91', 0, yy - 1.0, 6.08, 0.06);
+    rect('#2d3636', 0, yy - 0.32, 5.9, 0.05);
+    rect('#2d3636', 0, yy - 0.79, 5.9, 0.04);
+    for (let b = 0; b < 40; b++) rect('#2d3636', -2.92 + b * 0.15, yy - 0.79, 0.025, 0.5);
+  }
+  rect('#a29d94', 0, 9.0, 6.08, 0.08);
+  const map = new T.CanvasTexture(c);
+  map.colorSpace = T.SRGBColorSpace;
+  map.anisotropy = 8;
+  return map;
+}
+
 export function buildCity(scene, foldUniform) {
   const palette = {
     stone: 0xc8baa0,
@@ -26,9 +84,7 @@ export function buildCity(scene, foldUniform) {
     leafLight: 0xa8ad76,
     leafDark: 0x6c8057,
     awning: 0x536b62,
-    clay: 0xbab7ae,
-    clayLight: 0xcec9be,
-    clayDark: 0xa5a79f,
+    ground: 0xa9a69b,
     gold: 0xeccd85,
   };
   const materials = {},
@@ -61,6 +117,11 @@ export function buildCity(scene, foldUniform) {
     );
   materials.gold.emissive = new T.Color(0xf0bb48);
   materials.gold.emissiveIntensity = 0.35;
+  // The far rows share one painted facade, tinted by the stone colours.
+  const facadeMap = paintedFacade();
+  for (const key of ['stone', 'cream', 'ochre']) {
+    materials['painted-' + key] = deform(new T.MeshStandardMaterial({ color: palette[key], map: facadeMap, roughness: 0.88 }));
+  }
   const aoNormal = deform(new T.MeshNormalMaterial());
   const depth = deform(new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking }), false);
   function addGeometry(key, g) {
@@ -71,8 +132,10 @@ export function buildCity(scene, foldUniform) {
     batches.get(key).push(g);
   }
   const geoCache = new Map();
-  function box(key, x, y, z, w, h, d, rx = 0, ry = 0) {
-    const seg = Math.max(1, Math.ceil(d / (Math.abs(x) > 150 ? 3 : 0.7))),
+  // step: segment length along z, for the bend. 1.5 m keeps the error under 3 cm at roof height on
+  // the tightest fold (the original used 0.7 m); far out 3 m is enough.
+  function box(key, x, y, z, w, h, d, rx = 0, ry = 0, step = Math.abs(x) > 150 ? 3 : 1.5) {
+    const seg = Math.max(1, Math.ceil(d / step)),
       cacheKey = 'b' + seg;
     let base = geoCache.get(cacheKey);
     if (!base) {
@@ -91,8 +154,8 @@ export function buildCity(scene, foldUniform) {
     g.translate(x, y, z);
     addGeometry(key, g);
   }
-  function roof(x, y, z, w, d) {
-    const g = new T.BoxGeometry(w, 1.7, d, 1, 1, Math.ceil(d / 0.6));
+  function roof(x, y, z, w, d, step = 0.6) {
+    const g = new T.BoxGeometry(w, 1.7, d, 1, 1, Math.ceil(d / step));
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
       if (p.getY(i) > 0) {
@@ -103,7 +166,7 @@ export function buildCity(scene, foldUniform) {
     g.computeVertexNormals();
     g.translate(x, y + 0.85, z);
     addGeometry('roof', g);
-    box('roofEdge', x, y + 1.75, z, w * 0.72, 0.16, d * 0.78);
+    box('roofEdge', x, y + 1.75, z, w * 0.72, 0.16, d * 0.78, 0, 0, Math.max(1.5, step));
   }
   function lamp(x, z) {
     shape('iron', new T.CylinderGeometry(0.055, 0.115, 3.35, 6), x, 1.9, z);
@@ -161,7 +224,7 @@ export function buildCity(scene, foldUniform) {
   }
   // A continuous road and pavements, subdivided along the bend.
   box('earth', 0, -0.5, 48, 740, 1.0, 440);
-  box('clayDark', 0, -0.025, 48, 740, 0.06, 440);
+  box('ground', 0, -0.025, 48, 740, 0.06, 440);
   box('road', 0, -0.015, 48, 9, 0.16, 440);
   for (const side of [-1, 1]) {
     box('paving', side * 6, 0.11, 48, 3, 0.3, 440);
@@ -280,33 +343,108 @@ export function buildCity(scene, foldUniform) {
   for (const s of [-25, 42]) for (let i = -3; i <= 3; i++) box('white', i * 1.13, 0.076, s, 0.64, 0.019, 2.7);
   // Subtle gold bands identify the bend's two tangent joins.
   for (const s of [-4, 76]) box('gold', 0, 0.083, s, 9, 0.025, 0.055);
-  // A bounded, texture-free clay district shares the same continuous bend.
-  for (let col = -20; col <= 20; col++) {
-    if (col === 0) continue;
-    const x = col * 18;
-    box('road', x + 8.0, 0.015, 48, 2.4, 0.07, 440);
-    for (let row = 0; row < 57; row++) {
-      const s = -167 + row * 7.65;
-      if (row % 4 === 3) continue;
-      const h = 6.8 + ((row * 7 + col * col * 3) % 7) * 0.82,
-        w = col === -1 || col === 1 ? 6 : 11.5,
-        xx = col === -1 || col === 1 ? x + Math.sign(col) * 2.8 : x;
-      const key = ['clay', 'clayLight', 'clayDark'][(row + Math.abs(col)) % 3];
-      bounds.colliders.push({ x: xx, z: s, w, d: 6.4 });
-      box(key, xx, h / 2 + 0.1, s, w, h, 6.4);
-      box('clayLight', xx, h + 0.13, s, w + 0.22, 0.26, 6.55);
-      box(key, xx, h + 0.8, s, w * 0.87, 1.15, 5.65);
-      box('clayLight', xx, h + 1.45, s, w * 0.73, 0.18, 4.9);
-      box(key, xx + w * 0.3, h + 1.78, s + 1.7, 0.55, 0.68, 0.6);
-      // Geometric window recesses and floor bands, no image textures.
-      for (let f = 0; f < (Math.abs(col) > 10 ? 1 : 3); f++) {
-        box('clayLight', xx, 1.65 + f * 2.1, s - 3.24, w + 0.05, 0.1, 0.13);
-        for (let j = -1; j <= 1; j++)
-          box('clayDark', xx + j * w * 0.27, 1.1 + f * 2.1, s - 3.25, 0.7, 1.2, 0.055);
+  // ---- Side district.
+  // The main street's gaps (i % 4 === 3) continue as cross streets, and long streets run parallel to the
+  // main street, every PITCH metres. Each long street has a row of buildings on each side, on the same
+  // 6.35 m rhythm as the main street. Rows near the main street get real facades (sideFacade); rows
+  // further out get a painted facade texture (paintedBlock), so the whole city reads as finished.
+  const LONG0 = 23.1; // first long street, |x|
+  const PITCH = 18.8; // long street to long street
+  const HALF = 3.3; // long street half-width, facade to centre
+  const DEPTH = 6.1; // building depth across x
+  const NEAR = 50; // rows closer than this get real facades
+  const sAt = (i) => -168.5 + i * 6.35;
+
+  // A Haussmann facade in geometry, lighter than the main street's. dir points from the street to the
+  // building centre; the facade plane is at face, and its details stand out toward the street.
+  function sideFacade(key, x, z, dir, h, i) {
+    const face = x - dir * DEPTH / 2;
+    const S = 2; // long boxes need fewer segments than on the main street
+    box(key, x, h / 2 + 0.28, z, DEPTH, h, 6.08, 0, 0, S);
+    box('trim', x, 0.52, z, 6.22, 0.45, 6.16, 0, 0, S);
+    box('trim', x, 2.65, z, 6.25, 0.2, 6.15, 0, 0, S);
+    box('trim', x, h + 0.14, z, 6.4, 0.28, 6.23, 0, 0, S);
+    roof(x, h + 0.44, z, 6.3, 6.24, S);
+    for (const zz of [z - 2.6, z + 2.6]) box('stone', x + dir * 1.8, h + 2.1, zz, 0.44, 1.4, 0.52);
+    for (const zz of [z - 1.65, z, z + 1.65]) {
+      box('trim', face + dir * 0.42, h + 1.12, zz, 0.5, 1.13, 0.9);
+      box('glass', face + dir * 0.14, h + 1.12, zz, 0.04, 0.91, 0.66);
+    }
+    // Rusticated ground floor, door, and a shop or two windows either side of it.
+    for (let r = 0; r < 3; r++) box('shadow', face - dir * 0.02, 0.95 + r * 0.56, z, 0.04, 0.02, 5.9, 0, 0, S);
+    box('iron', face - dir * 0.07, 1.34, z, 0.13, 2.08, 1.14);
+    box('wood', face - dir * 0.15, 1.26, z, 0.08, 1.75, 0.93);
+    for (const zz of [z - 1.85, z + 1.85]) {
+      box(i % 3 === 1 ? 'iron' : 'trim', face - dir * 0.06, 1.4, zz, 0.12, 1.55, 1.3);
+      box('glass', face - dir * 0.14, 1.42, zz, 0.05, 1.35, 1.08);
+      if (i % 3 === 1) box('awning', face - dir * 0.45, 2.3, zz, 0.8, 0.14, 1.5);
+    }
+    // Three floors of windows with pediments.
+    for (let floor = 0; floor < 3; floor++) {
+      const yy = 3.65 + floor * 2.12;
+      for (let col = 0; col < 3; col++) {
+        const zz = z + (col - 1) * 1.68;
+        box('trim', face - dir * 0.09, yy, zz, 0.17, 1.72, 1.03);
+        box((i + col + floor) % 4 === 0 ? 'glassLight' : 'glass', face - dir * 0.19, yy, zz, 0.06, 1.49, 0.79);
+        box('trim', face - dir * 0.2, yy + 0.95, zz, 0.34, 0.12, 1.18);
+      }
+    }
+    // Continuous balconies on the first and third floor, as on a Haussmann block.
+    for (const floor of [0, 2]) {
+      const yy = 3.65 + floor * 2.12;
+      box('trim', face - dir * 0.4, yy - 0.87, z, 0.8, 0.13, 5.9, 0, 0, S);
+      box('iron', face - dir * 0.76, yy - 0.29, z, 0.06, 0.06, 5.9, 0, 0, S);
+      box('iron', face - dir * 0.76, yy - 0.76, z, 0.05, 0.04, 5.9, 0, 0, S);
+      for (let b = 0; b < 7; b++) box('iron', face - dir * 0.76, yy - 0.52, z - 2.85 + b * 0.95, 0.036, 0.48, 0.036);
+    }
+    // The end walls that face a cross street get windows too.
+    const ends = i % 4 === 0 ? [-1] : i % 4 === 2 ? [1] : [];
+    for (const end of ends) {
+      for (let floor = 0; floor < 4; floor++) {
+        for (const dx of [-1.75, 0, 1.75]) {
+          box('trim', x + dx, 1.42 + floor * 2.05, z + end * 3.08, 1.05, 1.55, 0.12);
+          box('glass', x + dx, 1.42 + floor * 2.05, z + end * 3.16, 0.81, 1.32, 0.04);
+        }
       }
     }
   }
-  for (let row = 3; row < 57; row += 4) box('road', 0, 0.02, -167 + row * 7.65, 740, 0.08, 2.3);
+
+  // A far building: one box with a painted facade on all four sides, a cornice, a roof and a chimney.
+  function paintedBlock(key, x, z, h) {
+    box('painted-' + key, x, h / 2 + 0.28, z, DEPTH, h, 6.08, 0, 0, 3);
+    box('trim', x, h + 0.14, z, 6.4, 0.28, 6.23, 0, 0, 6.5);
+    roof(x, h + 0.44, z, 6.3, 6.24, 3.2);
+    box('stone', x + 1.8, h + 2.1, z - 2.6, 0.44, 1.4, 0.52);
+  }
+
+  for (const side of [-1, 1]) {
+    // Cross streets, from the main street's pavement to the edge of the city.
+    for (let i = 3; i < 64; i += 4) box('road', side * 187.75, 0.02, sAt(i), 360.5, 0.06, 3.6);
+    for (let m = 0; LONG0 + m * PITCH < 368; m++) {
+      const L = LONG0 + m * PITCH;
+      box('road', side * L, 0.015, 48, 3.6, 0.06, 440, 0, 0, 4);
+      const near = L < NEAR + 10;
+      for (let i = 1; near && i < 64; i += 4) {
+        lamp(side * (L - 2.6), sAt(i));
+        lamp(side * (L + 2.6), sAt(i + 1));
+      }
+      for (const out of [-1, 1]) {
+        const dist = L + out * (HALF + DEPTH / 2);
+        const x = side * dist;
+        const dir = side * out;
+        for (let i = 0; i < 64; i++) {
+          if (i % 4 === 3) continue;
+          const z = sAt(i);
+          const seed = i * 3 + m * 5 + (out > 0 ? 2 : 0) + (side > 0 ? 1 : 0);
+          const h = 8.45 + (seed % 4) * 0.6;
+          const key = ['stone', 'cream', 'ochre', 'cream'][(i + m + (out > 0 ? 1 : 0)) % 4];
+          bounds.colliders.push({ x, z, w: DEPTH, d: 6.08 });
+          if (dist < NEAR) sideFacade(key, x, z, dir, h, i);
+          else paintedBlock(key, x, z, h);
+        }
+      }
+    }
+  }
   // Freestanding ad panels. Both support legs end strictly below the text panel.
   const stopCanvas = document.createElement('canvas');
   stopCanvas.width = 1024;
@@ -345,6 +483,7 @@ export function buildCity(scene, foldUniform) {
     const g = mergeGeometries(list, false);
     for (const item of list) item.dispose();
     const m = new T.Mesh(g, materials[key]);
+    m.name = key;
     m.customDepthMaterial = depth;
     m.userData.aoNormal = aoNormal;
     m.castShadow = !['road', 'paving', 'white', 'joint', 'gold'].includes(key);

@@ -1,4 +1,4 @@
-import * as T from 'three';
+import * as T from './three.module.js';
 import { bendPoint, frameAt } from './curve.js';
 import { groundAt } from './walk.js';
 
@@ -9,12 +9,12 @@ import { groundAt } from './walk.js';
 //
 // Controls:
 //   left stick       walk, in the direction you look. Hold left grip or trigger to run.
-//   right stick L/R  snap turn 30 degrees
+//   right stick L/R  smooth turn
 //   right stick U/D  fold the street (this turns auto fold off)
 //   A                auto fold on / off
 //   B                release the sphere, or reset it when it is already rolling
 
-const SNAP = Math.PI / 6;
+const TURN_RATE = Math.PI / 2; // radians per second at full stick (90 degrees)
 const DEAD = 0.2;
 const WALK = 2.2;
 const RUN = 7;
@@ -66,7 +66,6 @@ export function vr(renderer, scene, camera, walker, actions) {
   const headDir = new T.Vector3();
   const zAxis = new T.Vector3();
   const prev = { a: false, b: false };
-  let snapped = false;
 
   // The button only shows when the browser can start an immersive VR session.
   const button = document.getElementById('vrButton');
@@ -107,11 +106,11 @@ export function vr(renderer, scene, camera, walker, actions) {
     return { hx: camera.position.x, hz: camera.position.z, fx: headDir.x / len, fz: headDir.z / len };
   }
 
-  // Snap turn about the head, not about the rig origin, so you do not swing around the room.
-  function turn(dir) {
+  // Turn about the head, not about the rig origin, so you do not swing around the room.
+  function turn(da) {
     const { hx, hz } = head();
     const before = rotY(hx, hz, -walker.yaw);
-    walker.yaw += dir * SNAP;
+    walker.yaw += da;
     const after = rotY(hx, hz, -walker.yaw);
     // Rig space x maps to street -x and rig space -z maps to street +s.
     walker.pos.x -= before[0] - after[0];
@@ -136,12 +135,8 @@ export function vr(renderer, scene, camera, walker, actions) {
           walker.step(-bx * speed, -bz * speed);
         }
       } else if (src.handedness === 'right') {
-        if (Math.abs(ax) > 0.6 && !snapped) {
-          turn(Math.sign(ax));
-          snapped = true;
-        }
-        if (Math.abs(ax) < 0.3) {
-          snapped = false;
+        if (ax) {
+          turn(ax * Math.abs(ax) * TURN_RATE * dt); // squared, so small pushes turn slowly
         }
         if (ay) {
           actions.foldBy(-ay * FOLD_RATE * dt);

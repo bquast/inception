@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from './three.module.js';
 import { OrbitControls } from './OrbitControls.js';
 import { postProcessing } from './post.js';
 import { traffic } from './traffic.js';

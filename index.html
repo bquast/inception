@@ -7,7 +7,6 @@
 <title>Paris Fold: the street that folds in Inception</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="style.css">
-<script type="importmap">{ "imports": { "three": "./three.module.js" } }</script>
 </head>
 <body>
 <main id="world" aria-label="Interactive folding Paris street"></main>
@@ -95,11 +94,50 @@
 <div id="error" hidden>WebGL couldn’t start. Try a browser with hardware acceleration on.</div>
 
 <script type="module">
-import('./app.js').catch((e) => {
+// All modules, in dependency order. On a failure each one is fetched and imported alone, so the
+// error box names the file that broke. The headset has no easy console, so this is the console.
+const FILES = [
+  'three.module.js', 'BufferGeometryUtils.js', 'SimplexNoise.js', 'CopyShader.js', 'OutputShader.js',
+  'LuminosityHighPassShader.js', 'FXAAShader.js', 'GTAOShader.js', 'PoissonDenoiseShader.js',
+  'Pass.js', 'MaskPass.js', 'ShaderPass.js', 'RenderPass.js', 'EffectComposer.js', 'OutputPass.js',
+  'UnrealBloomPass.js', 'GTAOPass.js', 'OrbitControls.js',
+  'curve.js', 'environment.js', 'post.js', 'traffic.js', 'walk.js', 'city.js', 'vr.js', 'app.js',
+];
+
+async function diagnose() {
+  const bad = [];
+  for (const f of FILES) {
+    try {
+      const r = await fetch(f, { cache: 'no-store' });
+      if (!r.ok) {
+        bad.push(f + ': HTTP ' + r.status);
+        continue;
+      }
+    } catch (x) {
+      bad.push(f + ': ' + x.message);
+      continue;
+    }
+    if (f === 'app.js') {
+      continue; // importing app.js again would start the scene twice
+    }
+    try {
+      await import('./' + f);
+    } catch (x) {
+      bad.push(f + ': ' + x.name + ': ' + x.message);
+    }
+  }
+  return bad;
+}
+
+import('./app.js').catch(async (e) => {
   console.error(e);
   const t = document.getElementById('error');
   t.hidden = false;
-  t.textContent = 'The 3D scene couldn’t start. It needs a recent browser with WebGL 2 and hardware acceleration on. ' + e.message;
+  t.textContent = 'The 3D scene couldn’t start. ' + e.name + ': ' + e.message + '\n\nChecking files…';
+  const bad = await diagnose();
+  t.textContent = 'The 3D scene couldn’t start. ' + e.name + ': ' + e.message + '\n\n' +
+    (bad.length ? 'Failed:\n' + bad.join('\n') : 'All files load now. Clear the browser cache and reload.') +
+    '\n\n' + navigator.userAgent;
 });
 </script>
 </body>

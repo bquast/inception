@@ -29,7 +29,7 @@ All files are in the root. No build step, no CDN.
 | `index.html`, `style.css` | page and UI |
 | `app.js` | renderer, scene, UI wiring, frame loop |
 | `curve.js` | the bend: street frame on the CPU, and the same bend in GLSL |
-| `city.js` | buildings, street, clay district, built flat and folded in the vertex shader |
+| `city.js` | main street, side district (cross streets and long streets you can walk into), built flat and folded in the vertex shader |
 | `traffic.js` | parked and moving cars (instanced) |
 | `walk.js` | first person walker in street coordinates, shared by desktop and VR |
 | `environment.js` | sky shader and ground plane |
@@ -47,12 +47,16 @@ All files are in the root. No build step, no CDN.
 ## VR controls
 
 - Left stick: walk where you look. Left grip or trigger: run.
-- Right stick left/right: snap turn 30°.
+- Right stick left/right: smooth turn (up to 90° per second).
 - Right stick up/down: fold the street (auto fold goes off).
 - A: auto fold on/off. B: release the sphere, or reset it.
 
 You start on the flat part of the street, before the bend. Walk forward into the bend: the street stays
 under your feet and the world turns around you.
+
+The side district has two levels of detail: rows within 50 m of the main street have real facades,
+rows further out have a painted facade texture (drawn on a canvas, no image files). The whole city is
+about 1.35 million triangles.
 
 In VR the post-processing is off, the shadow map is 1024 instead of 2048, and the sphere reflection
 does not refresh.
