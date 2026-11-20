@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#191e20">
+<title>Paris Fold: the street that folds in Inception</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{ "imports": { "three": "./three.module.js" } }</script>
+</head>
+<body>
+<main id="world" aria-label="Interactive folding Paris street"></main>
+
+<svg id="arc" aria-label="Drag the gold arc to fold the street">
+  <path id="arcLine"></path>
+  <path id="arcHit"></path>
+  <circle id="knob" r="12"></circle>
+  <text id="arcLabel">DRAG TO FOLD</text>
+</svg>
+
+<header>
+  <a class="brand" href="./"><span>PARIS / FOLD<small>THE STREET THAT FOLDS IN INCEPTION</small></span></a>
+  <a class="edition" href="https://sael.net/paris-inception/" target="_blank" rel="noopener noreferrer">Original by Ryan Sael ↗</a>
+</header>
+
+<aside class="panel">
+  <div class="eyebrow">THE ARCHITECT'S TABLE</div>
+  <h1>Fold a Paris street</h1>
+  <p class="intro">Drag the gold arc or the slider to fold the avenue up over your head.</p>
+  <div class="line"></div>
+
+  <div class="label"><label for="fold">Street fold</label><output id="degrees">0<span>°</span></output></div>
+  <input id="fold" type="range" min="0" max="180" step="0.1" value="0" aria-label="Street fold angle">
+  <div class="scale"><span>FLAT</span><span>UPSIDE DOWN</span></div>
+  <label class="auto-control"><input id="autoFold" type="checkbox" checked> Auto fold slowly</label>
+  <div class="presets">
+    <button data-angle="0">0°</button>
+    <button data-angle="90">90°</button>
+    <button data-angle="135">135°</button>
+    <button data-angle="180">180°</button>
+  </div>
+  <div class="line"></div>
+
+  <div class="label"><label for="sun">Daylight angle</label><span id="sunValue">42°</span></div>
+  <input id="sun" type="range" min="10" max="85" value="42">
+  <div class="scale"><span>LOW SUN</span><span>HIGH NOON</span></div>
+  <div class="line"></div>
+
+  <div class="sphere-row">
+    <span class="sphere-icon"></span>
+    <div>Chrome sphere<small id="sphereStatus">Ready on the far street</small></div>
+  </div>
+  <button id="release" class="primary">Release sphere <span>↘</span></button>
+  <div class="secondary">
+    <button id="sphereReset">Reset sphere</button>
+    <button id="sceneReset">Reset scene ↺</button>
+  </div>
+
+  <div class="camera-controls">
+    <label for="cameraMode">Camera</label>
+    <select id="cameraMode">
+      <option value="orbit">Orbit / inspect</option>
+      <option value="walk">First person / walk</option>
+    </select>
+    <p id="walkHint"></p>
+    <label for="fov">Field of view <output id="fovValue">60°</output></label>
+    <input id="fov" type="range" min="35" max="110" value="60">
+    <label for="bloomStrength">Bloom intensity <output id="bloomValue">0.60</output></label>
+    <input id="bloomStrength" type="range" min="0" max="1.8" step="0.05" value="0.6">
+    <label for="dof">Depth of field <output id="dofValue">Off</output></label>
+    <input id="dof" type="range" min="0" max="1" step="0.05" value="0">
+    <label for="focus">Focus distance <output id="focusValue">35 m</output></label>
+    <input id="focus" type="range" min="2" max="200" step="1" value="35">
+  </div>
+  <div class="effects">
+    <label><input id="aoToggle" type="checkbox" checked> GTAO</label>
+    <label><input id="bloomToggle" type="checkbox" checked> Bloom</label>
+  </div>
+
+  <div class="credits">
+    <a href="https://lab.sael.net/" target="_blank" rel="noopener noreferrer">lab.sael.net ↗</a>
+    <a href="https://x.com/ryansael" target="_blank" rel="noopener noreferrer">@ryansael ↗</a>
+  </div>
+</aside>
+
+<footer>
+  <span><i></i> LIVE GEOMETRY</span>
+  <div>WASD walk <b>·</b> Drag to look <b>·</b> [ / ] fold</div>
+  <button id="cameraReset">Overview ↗</button>
+</footer>
+
+<button id="vrButton" hidden>Enter VR</button>
+
+<div id="error" hidden>WebGL couldn’t start. Try a browser with hardware acceleration on.</div>
+
+<script type="module">
+import('./app.js').catch((e) => {
+  console.error(e);
+  const t = document.getElementById('error');
+  t.hidden = false;
+  t.textContent = 'The 3D scene couldn’t start. It needs a recent browser with WebGL 2 and hardware acceleration on. ' + e.message;
+});
+</script>
+</body>
+</html>
